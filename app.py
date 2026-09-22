@@ -3,6 +3,7 @@ from PIL import Image
 import numpy as np
 from sklearn.cluster import KMeans
 from collections import Counter
+import pandas as pd
 
 st.set_page_config(page_title="이미지 컬러 팔레트 추출기", layout="wide")
 
@@ -20,10 +21,7 @@ if uploaded_file is not None:
         st.subheader("업로드한 이미지")
         st.image(image, use_container_width=True)
 
-    # -------------------------------------------------------------
-    # [최적화 핵심] 연산용으로 이미지 해상도를 줄임 (최대 300px)
-    # 이미지 화질 손상 없이 색상 분석 연산 속도를 10배 이상 향상시킵니다.
-    # -------------------------------------------------------------
+    # [연산 최적화] 해상도 축소
     img_small = image.copy()
     img_small.thumbnail((300, 300))
     
@@ -55,9 +53,22 @@ if uploaded_file is not None:
         st.write("### 추출된 컬러 팔레트")
         st.write("*(1번: 가장 많이 쓰인 색상 ➡️ 마지막: 상대적으로 적게 쓰인 색상)*")
 
+        # 저장용 데이터 수집
+        color_data = []
+        hex_list = []
+
         for idx, color in enumerate(palette, start=1):
-            hex_code = f"#{color[0]:02x}{color[1]:02x}{color[2]:02x}"
+            r, g, b = color[0], color[1], color[2]
+            hex_code = f"#{r:02x}{g:02x}{b:02x}".upper()
             percent = (counts[sorted_indices[idx-1]] / len(pixels)) * 100
+            
+            hex_list.append(hex_code)
+            color_data.append({
+                "순위": idx,
+                "HEX": hex_code,
+                "RGB": f"({r}, {g}, {b})",
+                "비율(%)": round(percent, 2)
+            })
             
             c1, c2, c3 = st.columns([1, 3, 2])
             with c1:
@@ -66,6 +77,39 @@ if uploaded_file is not None:
                     unsafe_allow_html=True
                 )
             with c2:
-                st.write(f"**{idx}위**: `{hex_code.upper()}`")
+                st.write(f"**{idx}위**: `{hex_code}` | RGB`({r}, {g}, {b})`")
             with c3:
                 st.write(f"비율: `{percent:.1f}%`")
+
+        st.divider()
+        st.subheader("💾 팔레트 내보내기 & 저장")
+
+        # 1. 전체 HEX 코드 한 번에 복사하기
+        all_hex_text = ", ".join(hex_list)
+        st.text_input("전체 HEX 코드 (한 번에 복사가능)", value=all_hex_text)
+
+        # 2. 파일 다운로드 버튼 (CSV / TXT)
+        df_palette = pd.DataFrame(color_data)
+        csv_data = df_palette.to_csv(index=False).encode('utf-8-sig')
+        
+        txt_content = "=== 추출된 컬러 팔레트 ===\n"
+        for item in color_data:
+            txt_content += f"{item['순위']}위: HEX {item['HEX']} | RGB {item['RGB']} | 비율 {item['비율(%)']}%\n"
+
+        d_col1, d_col2 = st.columns(2)
+        with d_col1:
+            st.download_button(
+                label="📄 TXT 파일로 다운로드",
+                data=txt_content,
+                file_name="color_palette.txt",
+                mime="text/plain",
+                use_container_width=True
+            )
+        with d_col2:
+            st.download_button(
+                label="📊 CSV (엑셀) 파일로 다운로드",
+                data=csv_data,
+                file_name="color_palette.csv",
+                mime="text/csv",
+                use_container_width=True
+            )
